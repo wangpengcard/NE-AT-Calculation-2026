@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>东北农事积温 - 数据驱动版</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body, html { height: 100%; overflow: hidden; background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
+        #sidebar { width: 280px; height: 100%; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column; padding: 15px; float: left; z-index: 10; }
+        #main-area { height: 100%; margin-left: 280px; display: flex; flex-direction: column; padding: 0; background: #fff; }
+        #top-controls { padding: 8px 20px; background: #f8f9fa; border-bottom: 1px solid #ddd; height: 55px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+        .view-btn-group .btn { font-weight: bold; border-radius: 4px; padding: 2px 12px; font-size: 0.9rem; }
+        #chart-container { flex-grow: 1; position: relative; padding: 10px 20px; overflow: hidden; display: flex; flex-direction: column; }
+        #status-bar { display: flex; gap: 10px; margin-bottom: 8px; flex-shrink: 0; }
+        .status-box { flex: 1; background: #f8f9fa; border: 1px solid #eee; border-left: 3px solid #ccc; padding: 4px 10px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .status-label { font-size: 0.8rem; color: #666; font-weight: bold; }
+        .status-val { font-size: 1.1rem; font-weight: bold; color: #333; }
+        .prov-select, .town-select { width: 100%; padding: 6px; font-weight: bold; font-size: 0.95rem; border-radius: 4px; margin-bottom: 8px; }
+        .cal-select { padding: 4px; font-size: 0.85rem; font-weight: bold; border-radius: 4px; width: 48%; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin-top: 5px; }
+        .cal-day { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; cursor: pointer; border-radius: 3px; position: relative; background: #f8f9fa; }
+        .cal-day:hover { background: #e2e6ea; }
+        .cal-day.active { border: 2px solid #0d6efd; font-weight: bold; background: #fff; }
+        .cal-dot { width: 5px; height: 5px; border-radius: 50%; position: absolute; bottom: 2px; }
+        .dot-green { background-color: #198754; }
+        .dot-yellow { background-color: #ffc107; }
+        .dot-gray { background-color: #adb5bd; }
+        #year-checkboxes label { margin-right: 12px; cursor: pointer; font-size: 0.9rem; font-weight: bold; }
+        .canvas-wrapper { flex-grow: 1; position: relative; width: 100%; min-height: 0; }
+    </style>
+</head>
+<body>
+
+<div id="loading" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.95);z-index:9999;display:flex;justify-content:center;align-items:center;">
+    <div class="text-center">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p id="loading-text" class="mt-2 fw-bold">东北农事积温 正在加载 CSV 数据...</p>
+    </div>
+</div>
+
+<div id="sidebar">
+    <h5 class="fw-bold mb-3 text-primary"><i class="fas fa-satellite-dish"></i> 东北农事积温</h5>
+    <div class="mb-2">
+        <label class="small text-muted fw-bold mb-1">省份选择</label>
+        <select id="provSelect" class="prov-select form-select" onchange="onProvChange()"></select>
+    </div>
+    <div class="mb-3">
+        <label class="small text-muted fw-bold mb-1">市县选择</label>
+        <select id="townSelect" class="town-select form-select" onchange="onTownChange()"></select>
+    </div>
+    <div class="mb-1">
+        <label class="small text-muted fw-bold mb-1">日历与状态</label>
+        <div class="d-flex justify-content-between mb-2">
+            <select id="calYear" class="cal-select form-select" onchange="onCalFilterChange()"></select>
+            <select id="calMonth" class="cal-select form-select" onchange="onCalFilterChange()">
+                <option value="1">1月</option><option value="2">2月</option><option value="3">3月</option>
+                <option value="4">4月</option><option value="5">5月</option><option value="6">6月</option>
+                <option value="7">7月</option><option value="8">8月</option><option value="9">9月</option>
+                <option value="10">10月</option><option value="11">11月</option><option value="12">12月</option>
+            </select>
+        </div>
+        <div class="calendar-grid small text-muted text-center mb-1 fw-bold" style="background:#eee; padding:2px 0;">
+            <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+        </div>
+        <div id="calendar-body" class="calendar-grid"></div>
+    </div>
+</div>
+
+<div id="main-area">
+    <div id="top-controls">
+        <div class="btn-group view-btn-group" role="group">
+            <input type="radio" class="btn-check" name="viewRadio" id="v1" checked onclick="switchView('weather')">
+            <label class="btn btn-outline-primary" for="v1">实况天气</label>
+            <input type="radio" class="btn-check" name="viewRadio" id="v2" onclick="switchView('annual')">
+            <label class="btn btn-outline-success" for="v2">年度积温</label>
+            <input type="radio" class="btn-check" name="viewRadio" id="v3" onclick="switchView('monthly')">
+            <label class="btn btn-outline-warning" for="v3">月度积温</label>
+        </div>
+        <div id="dynamic-controls">
+            <div class="ctrl-group ctrl-weather"><span class="fw-bold text-dark h5" id="weather-date-label">--</span></div>
+            <div class="ctrl-group ctrl-years d-none" id="year-checkboxes"></div>
+        </div>
+    </div>
+    <div id="chart-container">
+        <div id="weather-components">
+            <div id="status-bar">
+                <div class="status-box" style="border-left-color: #dc3545;"><span class="status-label">最高温</span><span class="status-val text-danger" id="st-max-t">--</span></div>
+                <div class="status-box" style="border-left-color: #0d6efd;"><span class="status-label">最低温</span><span class="status-val text-primary" id="st-min-t">--</span></div>
+                <div class="status-box" style="border-left-color: #198754;"><span class="status-label">日活动积温</span><span class="status-val text-success" id="st-daily-act">--</span></div>
+                <div class="status-box" style="border-left-color: #0dcaf0;"><span class="status-label">日降水</span><span class="status-val text-info" id="st-max-r">--</span></div>
+            </div>
+        </div>
+        <div class="canvas-wrapper"><canvas id="mainChart"></canvas></div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
+<script>
+    Chart.register(ChartDataLabels);
+    Chart.defaults.set('plugins.datalabels', { display: false });
+
+    let PROVINCES = {};
+    let ALL_TOWNS = [];
+
+    let RAW_DATA = {};
+    let AVAILABLE_YEARS = [];
+    let CHART_INSTANCE = null;
+
+    let STATE = { view: 'weather', prov: '', town: '', calYear: null, calMonth: null, date: null, selectedYears: [] };
+
+    let ACCUM_CACHE = {};
+
+    const verticalHoverLinePlugin = {
+        id: 'verticalHoverLine',
+        afterDraw: (chart, args, options) => {
+            if (options === false) return;
+            if (chart.tooltip?._active?.length) {
+                const activePoint = chart.tooltip._active[0];
+                const x = activePoint.element.x;
+                const { ctx, chartArea: { top, bottom } } = chart;
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(x, top);
+                ctx.lineTo(x, bottom);
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = 'rgba(128, 128, 128, 0.8)';
+                ctx.setLineDash([2, 2]);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    };
+    Chart.register(verticalHoverLinePlugin);
+
+    window.onload = function() { localStorage.clear(); loadAllData(); };
+
+        async function loadAllData() {
+        try {
+            // ===== 1. 加载乡镇站点列表 =====
+            const townsResult = await new Promise((resolve, reject) => {
+                Papa.parse('townsNE.csv', {
+                    download: true, header: false, dynamicTyping: false, skipEmptyLines: true,
+                    complete: results => resolve(results),
+                    error: err => reject(err)
+                });
+            });
+
+            PROVINCES = {};
+            ALL_TOWNS = [];
+            townsResult.data.forEach(row => {
+                if (row.length < 4) return;
+                const id = row[0].trim();
+                const name = row[1].trim();
+                const coordStr = row[2].trim().replace(/"/g, '').replace(/，/g, ',');
+                const parts = coordStr.split(',');
+                if (parts.length !== 2) return;
+                const lat = parts[0].trim();
+                const lon = parts[1].trim();
+                const province = row[3].trim();
+                if (!PROVINCES[province]) PROVINCES[province] = [];
+                PROVINCES[province].push({ id, name, lat, lon });
+                ALL_TOWNS.push({ id, name, lat, lon, province });
+            });
+
+            // ===== 2. 按年份独立加载 CSV（2020~2030）=====
+            RAW_DATA = {};
+            const TRY_YEARS = [2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030];
+            await Promise.all(TRY_YEARS.map(year => {
+                return new Promise(resolve => {
+                    Papa.parse(year + '.csv', {
+                        download: true, header: true, dynamicTyping: true, skipEmptyLines: true,
+                        complete: results => {
+                            if (results.data && results.data.length > 0) {
+                                if (!AVAILABLE_YEARS.includes(year)) AVAILABLE_YEARS.push(year);
+                                if (!RAW_DATA[year]) RAW_DATA[year] = {};
+                                results.data.forEach(row => {
+                                    if (!row.date || !row.name) return;
+                                    if (!RAW_DATA[year][row.name]) RAW_DATA[year][row.name] = {};
+                                    RAW_DATA[year][row.name][row.date] = {
+                                        id: row.id, name: row.name, lat: row.lat, lon: row.lon, date: row.date,
+                                        temp_min: parseFloat(row.temp_min) || 0,
+                                        temp_max: parseFloat(row.temp_max) || 0,
+                                        temp_afternoon: parseFloat(row.temp_afternoon) || 0,
+                                        temp_night: parseFloat(row.temp_night) || 0,
+                                        temp_evening: parseFloat(row.temp_evening) || 0,
+                                        temp_morning: parseFloat(row.temp_morning) || 0,
+                                        precipitation_total: parseFloat(row.precipitation_total) || 0
+                                    };
+                                });
+                            }
+                            resolve();
+                        },
+                        error: () => resolve()
+                    });
+                });
+            }));
+
+            AVAILABLE_YEARS.sort((a, b) => a - b);
+
+            if (AVAILABLE_YEARS.length === 0) {
+                document.getElementById('loading-text').innerHTML = "<b class='text-danger'>未发现有效数据！请确认 CSV 文件是否存在。</b>";
+                return;
+            }
+
+            const maxYear = Math.max(...AVAILABLE_YEARS);
+            const firstProv = Object.keys(PROVINCES)[0];
+            const firstTown = PROVINCES[firstProv][0].name;
+            const townData = RAW_DATA[maxYear]?.[firstTown] || {};
+            const allDates = Object.keys(townData).sort();
+            const latestDate = allDates[allDates.length - 1] || `${maxYear}-06-01`;
+            const [y, m] = latestDate.split('-').map(Number);
+
+            STATE.prov = firstProv;
+            STATE.town = firstTown;
+            STATE.calYear = y;
+            STATE.calMonth = m;
+            STATE.date = latestDate;
+            STATE.selectedYears = [y];
+
+            initProvMenu();
+            initTownMenu();
+            initCalYearSelect();
+            initYearCheckboxes();
+            refreshUI();
+        } catch (e) {
+            document.getElementById('loading-text').innerHTML = `<b class='text-danger'>加载失败: ${e.message}</b>`;
+        }
+    }
+
+
+    function initProvMenu() {
+        const sel = document.getElementById('provSelect');
+        sel.innerHTML = '';
+        Object.keys(PROVINCES).forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p; opt.text = p;
+            sel.appendChild(opt);
+        });
+        sel.value = STATE.prov;
+    }
+
+    function initTownMenu() {
+        const sel = document.getElementById('townSelect');
+        sel.innerHTML = '';
+        const towns = PROVINCES[STATE.prov] || [];
+        towns.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.name; opt.text = t.name;
+            sel.appendChild(opt);
+        });
+        if (towns.length > 0 && !towns.find(t => t.name === STATE.town)) {
+            STATE.town = towns[0].name;
+        }
+        sel.value = STATE.town;
+    }
+
+    function initCalYearSelect() {
+        const sel = document.getElementById('calYear');
+        sel.innerHTML = '';
+        AVAILABLE_YEARS.sort((a, b) => b - a).forEach(y => {
+            const opt = document.createElement('option');
+            opt.value = y; opt.text = y + "年";
+            sel.appendChild(opt);
+        });
+    }
+
+    function initYearCheckboxes() {
+        const container = document.getElementById('year-checkboxes');
+        container.innerHTML = "";
+        const colors = ['#198754', '#0d6efd', '#dc3545', '#ffc107', '#6610f2'];
+        AVAILABLE_YEARS.forEach((y, idx) => {
+            const wrap = document.createElement('div');
+            wrap.className = 'form-check form-check-inline mb-0';
+            wrap.innerHTML = `<input class="form-check-input" type="checkbox" id="chk-${y}" value="${y}" ${STATE.selectedYears.includes(y) ? 'checked' : ''}>
+                              <label class="form-check-label small fw-bold" for="chk-${y}" style="color:${colors[idx % 5]}">${y}</label>`;
+            wrap.querySelector('input').onchange = function () {
+                const yr = parseInt(this.value);
+                if (this.checked) STATE.selectedYears.push(yr);
+                else STATE.selectedYears = STATE.selectedYears.filter(i => i !== yr);
+                renderChart();
+            };
+            container.appendChild(wrap);
+        });
+    }
+
+    function onProvChange() {
+        STATE.prov = document.getElementById('provSelect').value;
+        initTownMenu();
+        onTownChange();
+    }
+
+    function onTownChange() {
+        STATE.town = document.getElementById('townSelect').value;
+        renderCalendar();
+        renderChart();
+    }
+
+    function onCalFilterChange() {
+        STATE.calYear = parseInt(document.getElementById('calYear').value);
+        STATE.calMonth = parseInt(document.getElementById('calMonth').value);
+        renderCalendar();
+    }
+
+    function switchView(viewName) {
+        STATE.view = viewName;
+        document.querySelectorAll('.ctrl-group').forEach(el => el.classList.add('d-none'));
+        document.getElementById('weather-components').style.display = (viewName === 'weather' ? 'block' : 'none');
+        if (viewName === 'weather') document.querySelector('.ctrl-weather').classList.remove('d-none');
+        else document.querySelector('.ctrl-years').classList.remove('d-none');
+        renderChart();
+    }
+
+    function refreshUI() {
+        document.getElementById('calYear').value = STATE.calYear;
+        document.getElementById('calMonth').value = STATE.calMonth;
+        renderCalendar();
+        renderChart();
+        document.getElementById('loading').style.display = 'none';
+    }
+
+    function computeAccumulated(year, townName) {
+        const cacheKey = `${year}_${townName}`;
+        if (ACCUM_CACHE[cacheKey]) return ACCUM_CACHE[cacheKey];
+
+        const townData = RAW_DATA[year]?.[townName];
+        if (!townData) return null;
+
+        const dates = Object.keys(townData).sort();
+        const dailyAct = [];
+        const dailyEff = [];
+        const cumAct = [];
+        const cumEff = [];
+
+        dates.forEach(date => {
+            const d = townData[date];
+            const temps = [d.temp_min, d.temp_max, d.temp_afternoon, d.temp_night, d.temp_evening, d.temp_morning];
+            const avg = temps.reduce((a, b) => a + b, 0) / 6;
+
+            dailyAct.push(avg >= 10 ? avg : 0);
+
+            const effAvg = temps.map(t => t - 10).reduce((a, b) => a + b, 0) / 6;
+            dailyEff.push(effAvg > 0 ? effAvg : 0);
+        });
+
+        let actStartIdx = -1;
+        for (let i = 0; i <= dates.length - 5; i++) {
+            let consecutive = true;
+            for (let j = 0; j < 5; j++) {
+                if (dailyAct[i + j] <= 0) { consecutive = false; break; }
+            }
+            if (consecutive) { actStartIdx = i; break; }
+        }
+
+        let cumA = 0, cumE = 0;
+        for (let i = 0; i < dates.length; i++) {
+            cumE += dailyEff[i];
+            cumEff.push(cumE);
+
+            if (actStartIdx >= 0 && i >= actStartIdx) {
+                cumA += dailyAct[i];
+            }
+            cumAct.push(cumA);
+        }
+
+        const result = { dates, dailyAct, dailyEff, cumAct, cumEff, actStart: actStartIdx >= 0 ? dates[actStartIdx] : null };
+        ACCUM_CACHE[cacheKey] = result;
+        return result;
+    }
+
+    function renderCalendar() {
+        const container = document.getElementById('calendar-body');
+        container.innerHTML = "";
+        const firstDay = new Date(STATE.calYear, STATE.calMonth - 1, 1).getDay();
+        const daysInMonth = new Date(STATE.calYear, STATE.calMonth, 0).getDate();
+        for (let i = 0; i < firstDay; i++) container.appendChild(document.createElement('div'));
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${STATE.calYear}-${String(STATE.calMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const cell = document.createElement('div');
+            cell.className = 'cal-day';
+            if (dateStr === STATE.date) cell.classList.add('active');
+            let dotClass = 'dot-gray';
+            const dayData = RAW_DATA[STATE.calYear]?.[STATE.town]?.[dateStr];
+            if (dayData) dotClass = 'dot-green';
+            cell.innerHTML = `${d}<div class="cal-dot ${dotClass}"></div>`;
+            cell.onclick = () => { STATE.date = dateStr; renderCalendar(); if (STATE.view === 'weather') renderChart(); };
+            container.appendChild(cell);
+        }
+    }
+
+    function renderChart() {
+        const ctx = document.getElementById('mainChart').getContext('2d');
+        if (CHART_INSTANCE) CHART_INSTANCE.destroy();
+
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { verticalHoverLine: true, datalabels: { display: false } }
+        };
+
+        if (STATE.view === 'weather') {
+            renderWeatherView(ctx, commonOptions);
+        } else if (STATE.view === 'annual') {
+            renderAnnualView(ctx, commonOptions);
+        } else {
+            renderMonthlyView(ctx, commonOptions);
+        }
+    }
+
+    function renderWeatherView(ctx, commonOptions) {
+        document.getElementById('weather-date-label').innerText = STATE.date;
+        const dayData = RAW_DATA[STATE.date.split('-')[0]]?.[STATE.town]?.[STATE.date];
+
+        if (!dayData) {
+            document.getElementById('st-max-t').innerText = '--';
+            document.getElementById('st-min-t').innerText = '--';
+            document.getElementById('st-daily-act').innerText = '--';
+            document.getElementById('st-max-r').innerText = '--';
+
+            CHART_INSTANCE = new Chart(ctx, {
+                type: 'line',
+                data: { labels: [], datasets: [] },
+                options: { ...commonOptions, scales: { y: { beginAtZero: true } } }
+            });
+            return;
+        }
+
+        const temps = [dayData.temp_min, dayData.temp_max, dayData.temp_afternoon, dayData.temp_night, dayData.temp_evening, dayData.temp_morning];
+        const tempLabels = ['最低温', '最高温', '午后', '夜间', '傍晚', '清晨'];
+        const avg = temps.reduce((a, b) => a + b, 0) / 6;
+        const dailyAct = avg >= 10 ? avg : 0;
+
+        document.getElementById('st-max-t').innerText = dayData.temp_max.toFixed(1) + "°";
+        document.getElementById('st-min-t').innerText = dayData.temp_min.toFixed(1) + "°";
+        document.getElementById('st-daily-act').innerText = dailyAct > 0 ? dailyAct.toFixed(1) + "℃·d" : '未达标';
+        document.getElementById('st-max-r').innerText = dayData.precipitation_total.toFixed(1) + "mm";
+
+        CHART_INSTANCE = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: tempLabels,
+                datasets: [
+                    {
+                        label: '温度(°C)',
+                        data: temps,
+                        backgroundColor: temps.map(t => t >= 10 ? 'rgba(220,53,69,0.7)' : 'rgba(13,110,253,0.7)'),
+                        yAxisID: 'y'
+                    },
+                    {
+                        type: 'line',
+                        label: '10℃基线',
+                        data: Array(6).fill(10),
+                        borderColor: '#ffc107',
+                        borderDash: [5, 5],
+                        pointRadius: 0,
+                        yAxisID: 'y',
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                ...commonOptions,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: '温度 (℃)', color: '#888', font: { size: 12 } }
+                    }
+                },
+                plugins: {
+                    ...commonOptions.plugins,
+                    datalabels: {
+                        display: true,
+                        align: 'top',
+                        anchor: 'end',
+                        font: { size: 11, weight: 'bold' },
+                        formatter: v => v !== null ? v.toFixed(1) : ''
+                    }
+                }
+            }
+        });
+    }
+
+    function renderAnnualView(ctx, commonOptions) {
+        const labels = [];
+        const s = new Date(2000, 3, 1);
+        while (s <= new Date(2000, 8, 30)) {
+            labels.push(`${String(s.getMonth() + 1).padStart(2, '0')}-${String(s.getDate()).padStart(2, '0')}`);
+            s.setDate(s.getDate() + 1);
+        }
+
+        const ds = [];
+        STATE.selectedYears.forEach((y, i) => {
+            const c = ['#198754', '#0d6efd', '#dc3545', '#ffc107', '#6610f2'][i % 5];
+            const accum = computeAccumulated(y, STATE.town);
+            if (!accum) return;
+
+            const dataA = labels.map(l => {
+                const idx = accum.dates.indexOf(`${y}-${l}`);
+                return idx >= 0 ? accum.cumAct[idx] : null;
+            });
+            const dataE = labels.map(l => {
+                const idx = accum.dates.indexOf(`${y}-${l}`);
+                return idx >= 0 ? accum.cumEff[idx] : null;
+            });
+
+            ds.push({ label: y + '活动积温', data: dataA, borderColor: c, pointRadius: 0, spanGaps: false, tension: 0.5, cubicInterpolationMode: 'monotone' });
+            ds.push({ label: y + '有效积温', data: dataE, borderColor: c, borderDash: [5, 5], pointRadius: 0, spanGaps: false, tension: 0.5, cubicInterpolationMode: 'monotone' });
+        });
+
+        CHART_INSTANCE = new Chart(ctx, {
+            type: 'line',
+            data: { labels, datasets: ds },
+            options: {
+                ...commonOptions,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: '积温 (℃·d)', color: '#888', font: { size: 12 } }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderMonthlyView(ctx, commonOptions) {
+        const labels = ['4月', '5月', '6月', '7月', '8月', '9月'];
+        const months = [4, 5, 6, 7, 8, 9];
+        const ds = [];
+
+        const getPattern = (color) => {
+            const pCanvas = document.createElement('canvas');
+            pCanvas.width = 10; pCanvas.height = 10;
+            const pCtx = pCanvas.getContext('2d');
+            pCtx.strokeStyle = color; pCtx.lineWidth = 1.5;
+            pCtx.beginPath(); pCtx.moveTo(0, 10); pCtx.lineTo(10, 0); pCtx.stroke();
+            return ctx.createPattern(pCanvas, 'repeat');
+        };
+
+        STATE.selectedYears.forEach((y, i) => {
+            const c = ['#198754', '#0d6efd', '#dc3545', '#ffc107', '#6610f2'][i % 5];
+            const accum = computeAccumulated(y, STATE.town);
+            const townData = RAW_DATA[y]?.[STATE.town] || {};
+
+            const actVals = months.map(m => {
+                if (!accum) return null;
+                const monthDates = accum.dates.filter(d => parseInt(d.split('-')[1]) === m);
+                if (monthDates.length === 0) return null;
+                let sum = 0;
+                monthDates.forEach(d => {
+                    const idx = accum.dates.indexOf(d);
+                    if (idx >= 0) sum += accum.dailyAct[idx];
+                });
+                return sum;
+            });
+
+            const effVals = months.map(m => {
+                if (!accum) return null;
+                const monthDates = accum.dates.filter(d => parseInt(d.split('-')[1]) === m);
+                if (monthDates.length === 0) return null;
+                let sum = 0;
+                monthDates.forEach(d => {
+                    const idx = accum.dates.indexOf(d);
+                    if (idx >= 0) sum += accum.dailyEff[idx];
+                });
+                return sum;
+            });
+
+            const precipVals = months.map(m => {
+                const monthDates = Object.keys(townData).filter(d => parseInt(d.split('-')[1]) === m);
+                if (monthDates.length === 0) return null;
+                let sum = 0;
+                monthDates.forEach(d => { sum += (townData[d]?.precipitation_total || 0); });
+                return sum;
+            });
+
+            ds.push({ label: y + '活动积温', data: actVals, backgroundColor: c, yAxisID: 'y' });
+            ds.push({ label: y + '有效积温', data: effVals, backgroundColor: getPattern(c), borderColor: c, borderWidth: 1, yAxisID: 'y' });
+            ds.push({ label: y + '降雨', type: 'line', data: precipVals, borderColor: c, backgroundColor: c, borderDash: [2, 2], pointStyle: 'circle', pointRadius: 4, yAxisID: 'y1' });
+        });
+
+        CHART_INSTANCE = new Chart(ctx, {
+            type: 'bar',
+            data: { labels, datasets: ds },
+            options: {
+                ...commonOptions,
+                plugins: {
+                    ...commonOptions.plugins,
+                    verticalHoverLine: false,
+                    datalabels: {
+                        display: true,
+                        align: 'top',
+                        anchor: 'end',
+                        offset: 2,
+                        font: { size: 14, weight: 'bold' },
+                        formatter: v => v !== null ? v.toFixed(1) : ''
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: '月度积温 (℃·d)', color: '#888', font: { size: 12 } }
+                    },
+                    y1: {
+                        position: 'right',
+                        title: { display: true, text: '降水量 (mm)', color: '#888', font: { size: 12 } },
+                        grid: { drawOnChartArea: false }
+                    }
+                }
+            }
+        });
+    }
+</script>
+</body>
+</html>
