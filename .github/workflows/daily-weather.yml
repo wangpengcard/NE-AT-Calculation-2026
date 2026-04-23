@@ -1,0 +1,50 @@
+name: Daily Weather Collector 2026
+
+on:
+  schedule:
+    # 每天北京时间 10:00 (UTC 02:00) 运行
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+# 必须赋予写权限，否则无法推送到仓库
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    # 将超时时间延长至 90 分钟（追赶阶段 API 调用较多）
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch weather data
+        env:
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+        run: python main.py
+
+      - name: Commit and push changes
+        # 即使之前的采集步骤部分失败，只要产生了新数据，就执行保存操作
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 暂存数据文件和进度文件
+          git add 2026.csv progress.json
+
+          # 检查是否有实际内容变更，避免空提交报错
+          if git diff --cached --quiet; then
+            echo "No changes to commit. Skipping..."
+          else
+            git commit -m "chore: 自动更新天气数据及进度 ($(date +'%Y-%m-%d %H:%M'))"
+            git push
+            echo "✅ 数据已成功同步至 GitHub 仓库。"
+          fi
