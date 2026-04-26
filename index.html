@@ -451,7 +451,7 @@
         }
 
         const temps = [dayData.temp_min, dayData.temp_max, dayData.temp_afternoon, dayData.temp_night, dayData.temp_evening, dayData.temp_morning];
-        const tempLabels = ['最低温', '最高温', '午后', '夜间', '傍晚', '清晨'];
+        const tempLabels = ['最低温', '最高温', '12:00', '00:00', '18:00', '06:00'];
         const avg = temps.reduce((a, b) => a + b, 0) / 6;
         const dailyAct = avg >= 10 ? avg : 0;
 
