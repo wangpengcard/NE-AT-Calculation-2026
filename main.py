@@ -20,7 +20,7 @@ TOWNS_CSV = "townsNE.csv"
 OUTPUT_CSV = "2026.csv"
 PROGRESS_FILE = "progress.json"
 MAX_CATCHUP_DAYS = 4       # 追赶阶段每天最多补几天
-DAILY_BUDGET = 219         # 日常阶段每天最多调用次数
+DAILY_BUDGET = 1000         # 日常阶段每天最多调用次数
 DATE_START = "2026-04-01"
 DATE_END = "2026-09-30"
 TZ_BEIJING = timezone(timedelta(hours=8))
