@@ -2,7 +2,7 @@ name: Daily Weather Collector 2026
 
 on:
   schedule:
-    # 每天北京时间 10:00 (UTC 02:00) 运行
+    # 每天北京时间 09:13 (UTC 01:13) 运行
     - cron: '13 1 * * *'
   workflow_dispatch:
 
