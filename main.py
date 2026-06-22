@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 2026年东北天气数据采集脚本
-- 追赶阶段：每天 219 地址 × 最多 4 天，补历史数据
 - 日常阶段：每天 219 地址 × 1 天，采前一天数据
 - 失败记录在追赶阶段跳过，日常阶段优先重试
 API: OpenWeatherMap One Call API 3.0 - Day Summary
